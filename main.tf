@@ -67,7 +67,6 @@ resource "azurerm_network_interface_security_group_association" "example" {
 
 resource "azurerm_linux_virtual_machine" "vm" {
   name                = "first"
-  count               = 1
   resource_group_name = azurerm_resource_group.resource.name
   location            = azurerm_resource_group.resource.location
 
@@ -96,7 +95,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
     version   = "latest"
   }
   custom_data = base64encode(file("repairs.sh"))
-  zone        = element(["1", "2"], count.index % length(["1", "2"]))
+
 }
 resource "azurerm_network_interface" "example1" {
   name                = "example-nic1"
@@ -111,7 +110,6 @@ resource "azurerm_network_interface" "example1" {
 }
 resource "azurerm_linux_virtual_machine" "vm2" {
   name                = "first2"
-  count               = 1
   resource_group_name = azurerm_resource_group.resource.name
   location            = azurerm_resource_group.resource.location
 
@@ -138,8 +136,16 @@ resource "azurerm_linux_virtual_machine" "vm2" {
     version   = "latest"
   }
   custom_data = base64encode(file("woody.sh"))
-  zone        = element(["1", "2"], count.index % length(["1", "2"]))
 }
+
+resource "azurerm_public_ip" "app_gateway_ip1" {
+  name                = "app-gateway-ip"
+  location            = azurerm_resource_group.resource.location
+  resource_group_name = azurerm_resource_group.resource.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
 
 resource "azurerm_application_gateway" "example" {
   name                = "example-app-gateway"
@@ -159,7 +165,7 @@ resource "azurerm_application_gateway" "example" {
 
   frontend_ip_configuration {
     name                 = "frontend-ip-configuration"
-    public_ip_address_id = azurerm_public_ip.app_gateway_ip.id
+    public_ip_address_id = azurerm_public_ip.app_gateway_ip1.id
   }
 
   frontend_port {
@@ -169,23 +175,23 @@ resource "azurerm_application_gateway" "example" {
 
   # Backend pool for identity service
   backend_address_pool {
-    name = "identity-backend-pool"
-    backend_addresses {
-      azurerm_linux_virtual_machine = azurerm_linux_virtual_machine.vm
-    }
+    name = "repair"
+    ip_addresses = [
+      azurerm_linux_virtual_machine.vm.private_ip_address
+    ]
   }
 
   # Backend pool for authorization service
   backend_address_pool {
-    name = "authorization-backend-pool"
-    backend_addresses {
-    azurerm_linux_virtual_machine= azurerm_linux_virtual_machine.vm2
-    }
+    name = "woody"
+    ip_addresses = [
+      azurerm_linux_virtual_machine.vm2.private_ip_address
+    ]
   }
 
 
   backend_http_settings {
-    name                  = "backend-http-settings"
+    name                  = "backed"
     cookie_based_affinity = "Disabled"
     port                  = 80
     protocol              = "Http"
@@ -200,30 +206,30 @@ resource "azurerm_application_gateway" "example" {
   }
 
   url_path_map {
-    name                = "path-map"
+    name = "path-map"
 
     path_rule {
-      name       = "identity-path-rule"
-      paths      = ["/repair/*"]
-      backend_address_pool_name = "identity-backend-pool"
-      backend_http_settings_name = "backend-http-settings"
+      name                       = "identity-path-rule"
+      paths                      = ["/repair/*"]
+      backend_address_pool_name  = "repair"
+      backend_http_settings_name = "backend"
     }
 
     path_rule {
-      name       = "authorization-path-rule"
-      paths      = ["/woody/*"]
-      backend_address_pool_name = "authorization-backend-pool"
-      backend_http_settings_name = "backend-http-settings"
+      name                       = "authorization-path-rule"
+      paths                      = ["/woody/*"]
+      backend_address_pool_name  = "woody"
+      backend_http_settings_name = "backend"
     }
 
-    default_backend_address_pool_name   = "default-backend-pool"
-    default_backend_http_settings_name   = "backend-http-settings"
+    default_backend_address_pool_name  = "default-backend-pool"
+    default_backend_http_settings_name = "backend"
   }
 
   request_routing_rule {
-    name                       = "path-based-routing-rule"
-    rule_type                 = "PathBasedRouting"
-    http_listener_name        = "http-listener"
-    url_path_map_name         = "path-map"
+    name               = "path-based-routing-rule"
+    rule_type          = "PathBasedRouting"
+    http_listener_name = "http-listener"
+    url_path_map_name  = "path-map"
   }
 }

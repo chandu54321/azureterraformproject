@@ -33,8 +33,8 @@ variable "azurerm_subnet" {
     }, {
     name          = "db-1"
     address_space = ["10.0.2.0/24"]
-    },{
-      name          = "db-2"
+    }, {
+    name          = "db-2"
     address_space = ["10.0.3.0/24"]
     }
   ]
